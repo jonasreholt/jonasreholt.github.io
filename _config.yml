@@ -13,7 +13,7 @@
 # you will see them accessed via {{ site.title }}, {{ site.email }}, and so on.
 # You can create any custom variable you would like, and they will be accessible
 # in the templates via {{ site.myvariable }}.
-title: Your awesome title
+title: Home Projects Created by Jonas Reholt
 email: jonaswolpers@yahoo.dk
 description: >- # this means to ignore newlines until "baseurl:"
   Contains introductions to small projects created by me, simply for fun.
@@ -24,7 +24,7 @@ github_username:  jonasreholt
 
 # Build settings
 markdown: kramdown
-theme: midnight
+theme: minima
 plugins:
   - jekyll-feed
 

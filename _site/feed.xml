@@ -1,0 +1,82 @@
+<?xml version="1.0" encoding="utf-8"?><feed xmlns="http://www.w3.org/2005/Atom" ><generator uri="https://jekyllrb.com/" version="3.9.2">Jekyll</generator><link href="http://localhost:4000/feed.xml" rel="self" type="application/atom+xml" /><link href="http://localhost:4000/" rel="alternate" type="text/html" /><updated>2022-09-03T16:59:48+02:00</updated><id>http://localhost:4000/feed.xml</id><title type="html">Home Projects Created by Jonas Reholt</title><subtitle>Contains introductions to small projects created by me, simply for fun.</subtitle><entry><title type="html">Native Trampoline</title><link href="http://localhost:4000/jekyll/update/2022/09/03/Native-Trampoline.html" rel="alternate" type="text/html" title="Native Trampoline" /><published>2022-09-03T16:59:29+02:00</published><updated>2022-09-03T16:59:29+02:00</updated><id>http://localhost:4000/jekyll/update/2022/09/03/Native-Trampoline</id><content type="html" xml:base="http://localhost:4000/jekyll/update/2022/09/03/Native-Trampoline.html">&lt;h1 id=&quot;project-info&quot;&gt;Project Info&lt;/h1&gt;
+&lt;ul&gt;
+  &lt;li&gt;Written in C++&lt;/li&gt;
+  &lt;li&gt;&lt;a href=&quot;https://github.com/jonasreholt/NativeTrampoline&quot;&gt;Github repository&lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;
+
+&lt;h1 id=&quot;introduction&quot;&gt;Introduction&lt;/h1&gt;
+&lt;p&gt;A native trampoline prepares a class function so it can be used as a callback method for
+native code i.e. code written in C. This preparation is needed, as non-static class
+functions usually has an implicit parameter pointing to the instance object. This is
+particularly a problem in C++, as its definition of method pointers doesn’t easily
+translate to function pointers.&lt;/p&gt;
+
+&lt;p&gt;In languages such as C# this preparation is handled by the compiler via the Delegate
+type. However, as C++ does not have anything mimicking this at language level, it
+must be implemented on top of it.&lt;/p&gt;
+
+&lt;p&gt;Don Clugstons article &lt;a href=&quot;https://www.codeproject.com/Articles/7150/Member-Function-Pointers-and-the-Fastest-Possible&quot;&gt;Member Function Pointers and the Fastest Possible C++ Delegates&lt;/a&gt;
+has a good explanation on C++ function and member function pointers. The most important
+note for my project for the native trampoline is that member function pointers consists
+of multiple fields, and cannot be converted to function pointers; even more annoying,
+different compilers implements member function pointers differently.&lt;/p&gt;
+
+&lt;h1 id=&quot;implementation&quot;&gt;Implementation&lt;/h1&gt;
+&lt;p&gt;First off to use the native trampoline, you must create a C handle function that makes
+the implicit &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;this&lt;/code&gt; parameter explicit, i.e. either wrap it in a static function or a
+C-like function. This could for a small example look like this:&lt;/p&gt;
+
+&lt;pre&gt;&lt;code class=&quot;language-C++&quot;&gt;class Fish {
+private:
+    int _classifier;
+public:
+    Fish(int c) { _classifier = c; }
+    void sort() { std::cout &amp;lt;&amp;lt; &quot;I'm the fish &quot; &amp;lt;&amp;lt; _classifier &amp;lt;&amp;lt; std::endl; }
+}
+
+void cSort(Fish* instance) { instance-&amp;gt;sort() }
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;This needs to be done, as there are no way of obtaining the memory location of the code 
+in a non-static member function pointer in C++, due to the implementation choice explained
+by Clugston.&lt;/p&gt;
+
+&lt;p&gt;One can then prepare the function such that it can be called from within a native language,
+using the native trampoline. This is simply done by invoking the static function below:&lt;/p&gt;
+
+&lt;pre&gt;&lt;code class=&quot;language-C++&quot;&gt;auto nativePtr = Trampoline::Jump0Param&amp;lt;Fish&amp;gt;(fish, cSort);
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;As the function name indicates, it has only been implemented for member functions having
+0 explicit parameters. This is simply because the line had to be drawn at some point, as
+the trampoline can either be made slower or more function should be made to prepare function
+pointers with more arguments.&lt;/p&gt;
+
+&lt;p&gt;The trampoline then creates a memory block with execution privileges using &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;mmap&lt;/code&gt;,
+fills it with the necessary assembly code, and returns a pointer to this memory block.
+X86-64 assembly code is used, as this is what my computer uses. The assembly
+code needed for the 0 parameter trampoline is (in AT&amp;amp;T syntax):&lt;/p&gt;
+
+&lt;div class=&quot;language-plaintext highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;push   %rbp
+mov    %rbp, %rsp
+movabs $0x&amp;lt;instance pointer&amp;gt;, %rdi
+movabs $0x&amp;lt;function pointer&amp;gt;, %rax
+callq  *%rax
+pop    %rbp
+retq
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;What this does is simply:&lt;/p&gt;
+&lt;ol&gt;
+  &lt;li&gt;Save the frame pointer on the stack.&lt;/li&gt;
+  &lt;li&gt;Move the instance pointer into &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;%rdi&lt;/code&gt; which holds the first function argument.&lt;/li&gt;
+  &lt;li&gt;Move the function pointer into &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;%rax&lt;/code&gt; so that a long call can be made to the
+function.&lt;/li&gt;
+  &lt;li&gt;Call said function.&lt;/li&gt;
+  &lt;li&gt;Move the frame pointer back from the stack into the &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;%rbp&lt;/code&gt; register.&lt;/li&gt;
+  &lt;li&gt;Return from the trampoline function.&lt;/li&gt;
+&lt;/ol&gt;
+
+&lt;p&gt;If one wanted to create a trampoline for a function containing more parameters, they would
+have to be added into the appropriate registers before the &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;callq&lt;/code&gt; instruction. If enough
+parameters are needed, the stack would also be needed to pass the arguments.&lt;/p&gt;</content><author><name></name></author><category term="jekyll" /><category term="update" /><summary type="html">Project Info Written in C++ Github repository</summary></entry></feed>
